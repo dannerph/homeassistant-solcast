@@ -1,0 +1,10 @@
+{
+  "domain": "solcast",
+  "name": "Solcast PV forecast",
+  "documentation": "https://www.home-assistant.io/integrations/solcast",
+  "requirements": ["aiohttp==3.6.2", "datetime==4.3", "isodate==0.6.0"],
+  "dependencies": [],
+  "codeowners": [
+    "@dannerph"
+  ]
+}
