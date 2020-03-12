@@ -10,7 +10,7 @@ solcast:
   api_key: XXXXXX
   resource_id: YYYYYY
 ```
-Switch configuration variables:
+Rooftop site configuration variables:
 * **api_key**: Your API key from Solcast.
 * **resource_id**: The rooftop site resouce_id from Solcast.
 
