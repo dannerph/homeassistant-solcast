@@ -11,7 +11,6 @@ import json
 
 from homeassistant.const import (
     CONF_API_KEY,
-    CONF_ENTITY_ID,
     EVENT_STATE_CHANGED,
     SUN_EVENT_SUNSET,
 )
@@ -32,9 +31,11 @@ import homeassistant.util.dt as dt_util
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "solcast"
-SUPPORTED_COMPONENTS = ["sensor"]
 
 CONF_RESOURCE_ID = "resource_id"
+CONF_API_LIMIT = "api_limit"
+CONF_SSL_DISABLE = "disable_ssl_check"
+CONF_AUTO_FORCAST = "disable_automatic_forecast_fetching"
 
 CONFIG_SCHEMA = vol.Schema(
     {
@@ -42,7 +43,9 @@ CONFIG_SCHEMA = vol.Schema(
             {
                 vol.Required(CONF_API_KEY): cv.string,
                 vol.Required(CONF_RESOURCE_ID): cv.string,
-                vol.Optional(CONF_ENTITY_ID, default=""): cv.string,
+                vol.Optional(CONF_AUTO_FORCAST, default=False): cv.boolean,
+                vol.Optional(CONF_API_LIMIT, default=10): cv.positive_int,
+                vol.Optional(CONF_SSL_DISABLE, default=False): cv.boolean,
             }
         )
     },
@@ -61,16 +64,17 @@ async def async_setup(hass, config):
     api_key = config[DOMAIN][CONF_API_KEY]
 
     resource_id = config[DOMAIN][CONF_RESOURCE_ID]
-    measurement_entity_id = config[DOMAIN][CONF_ENTITY_ID]
+    api_limit = config[DOMAIN][CONF_API_LIMIT]
+    disable_ssl = config[DOMAIN][CONF_SSL_DISABLE]
+    disable_auto_forecast_fetching = config[DOMAIN][CONF_AUTO_FORCAST]
 
-    rooftop_site = SolcastRooftopSite(hass, api_key, resource_id, measurement_entity_id)
+    rooftop_site = SolcastRooftopSite(hass, api_key, resource_id, api_limit, disable_ssl, disable_auto_forecast_fetching)
     hass.data[DOMAIN] = rooftop_site
 
     # Load sensors
-    for domain in SUPPORTED_COMPONENTS:
-        hass.async_create_task(
-            discovery.async_load_platform(hass, domain, DOMAIN, {}, config)
-        )
+    hass.async_create_task(
+        discovery.async_load_platform(hass, "sensor", DOMAIN, {}, config)
+    )
 
     # Register services to hass
     async def execute_service(call):
@@ -98,18 +102,20 @@ class SensorType(Enum):
 class SolcastAPI:
     """Representation of the Solcast API."""
 
-    def __init__(self, api_key):
+    def __init__(self, api_key, api_limit):
         """Initialize solcast API."""
 
         self._api_key = api_key
         self._base_url = "https://api.solcast.com.au/"
+        self._api_limit = api_limit
+        self._api_remaining = self._api_limit
 
-    async def request_data(self, path):
+    async def request_data(self, path, ssl=True):
         """Request data via the Solcast API."""
         params = {"format": "json", "api_key": self._api_key}
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                url=f"{self._base_url}{path}", params=params
+                url=f"{self._base_url}{path}", params=params, ssl=ssl
             ) as resp:
                 json = await resp.json()
                 status = resp.status
@@ -124,16 +130,25 @@ class SolcastAPI:
             _LOGGER.error("The rooftop site cannot be found or is not accessible.")
         elif status == 200:
             _LOGGER.debug("get request successful")
+
+        self._api_remaining = self._api_remaining - 1
+
         return json
 
-    async def post_data(self, path, data):
+    def get_remaining_API_count(self):
+        return self._api_remaining
+
+    def reset_api_limit(self):
+        self._api_remaining = self._api_limit
+
+    async def post_data(self, path, data, ssl=True):
         """Request data via the Solcast API as json."""
 
         params = {"api_key": self._api_key}
         headers = {"content-type": "application/json"}
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                url=f"{self._base_url}{path}", params=params, data=data, headers=headers
+                url=f"{self._base_url}{path}", params=params, data=data, headers=headers, ssl=ssl
             ) as resp:
                 text = await resp.text()
                 _LOGGER.debug(f"Post {text}")
@@ -170,13 +185,14 @@ class SolcastRooftopSite(SolcastAPI):
     _forecasts = []
     _estimated_actuals = []
 
-    def __init__(self, hass, api_key, resource_id, measurement_entity_id):
+    def __init__(self, hass, api_key, resource_id, api_limit, disable_ssl, disable_auto_forecast_fetching):
         """Initialize solcast rooftop site."""
 
-        super().__init__(api_key)
+        super().__init__(api_key, api_limit)
         self._hass = hass
         self._resource_id = resource_id
-        self._measurement_entity_id = measurement_entity_id
+        self._disable_ssl = disable_ssl
+        self._disable_auto_forecast_fetching = disable_auto_forecast_fetching
 
         self._last_processed_time_history = None
         self._forecast_entity_id = None
@@ -198,9 +214,14 @@ class SolcastRooftopSite(SolcastAPI):
 
     def start_periodic_update(self):
         """Start periodic data polling."""
+
+        # Register API limit reset
+        _LOGGER.debug("register API limit reset")
+        async_track_utc_time_change(self._hass, self.reset_api_limit, hour=0, minute=0, second=0, local=True)
+
         # Initial sensor update
         _LOGGER.debug("register initial history update in 20 seconds")
-        async_call_later(self._hass, 20, self.update_history())
+        async_call_later(self._hass, 20, self.update_history)
 
         # Set periodical history update
         _LOGGER.debug("register history update at sunrise")
@@ -215,30 +236,26 @@ class SolcastRooftopSite(SolcastAPI):
                 f"Good Morning! Time to prepare the day until the sun will set at {next_setting - timedelta(hours=1)}"
             )
 
-            remaining_api_calls = 7  # 10 - one for forecasts at midnight - this - reserve for initial startup
-            delay = (next_setting - dt_util.utcnow()) / remaining_api_calls
-            _LOGGER.info(
-                f"During the day, there will be {remaining_api_calls} updates delayed by {delay} each"
-            )
+            remaining_api_calls = self.get_remaining_API_count()
+            delay = (next_setting - dt_util.utcnow()) / remaining_api_calls - 1
+            _LOGGER.info(f"During the day, there will be {remaining_api_calls} updates delayed by {delay} each")
 
             # Schedule updates over the day (starting on 0 to process early morning update)
-            for i in range(0, remaining_api_calls + 1):
+            for i in range(0, remaining_api_calls):
                 exec_delay = delay.total_seconds() * i
                 exec_time = dt_util.utcnow() + timedelta(seconds=exec_delay)
-                _LOGGER.info(
-                    f"History update scheduled update at {exec_time.isoformat()}"
-                )
-                async_call_later(self._hass, exec_delay, self.update_history())
+
+                _LOGGER.info(f"History update scheduled update at {exec_time.isoformat()}")
+                async_call_later(self._hass, exec_delay, self.update_history)
 
         # Run history update
         # TEST: async_call_later(self._hass, 30, sunrise_call_action)
         async_track_sunrise(self._hass, sunrise_call_action)
 
         # Set daily forecast update
-        _LOGGER.debug("register daily forecast update")
-        async_track_utc_time_change(
-            self._hass, self.update_forecast, hour=0, minute=0, second=0, local=True
-        )
+        if not self._disable_auto_forecast_fetching:
+            _LOGGER.debug("register daily forecast update at 00:00:00")
+            async_track_utc_time_change(self._hass, self.update_forecast, hour=0, minute=0, second=0, local=True)
 
     async def update_forecast_service(self, param=None):
         """Update forecast state service call."""
@@ -263,7 +280,7 @@ class SolcastRooftopSite(SolcastAPI):
         """Update history state service call."""
         await self.update_history()
 
-    async def update_forecast(self, now):
+    async def update_forecast(self, now, *args):
         """Update forecast state."""
         # Process it in case of successful fetching
         if not await self._fetch_forecasts():
@@ -310,7 +327,7 @@ class SolcastRooftopSite(SolcastAPI):
                 self._notify_listeners(SensorType.forecast)
                 _LOGGER.info("Updated forecasts")
 
-    async def update_history(self):
+    async def update_history(self, *args):
         """Update history state."""
         # Process history data in case of successful fetching
         if await self._fetch_estimated_actuals():
@@ -416,7 +433,7 @@ class SolcastRooftopSite(SolcastAPI):
     async def _fetch_forecasts(self) -> bool:
         """Fetch the forecasts for this rooftop site."""
 
-        json = await self.request_data(f"/rooftop_sites/{self._resource_id}/forecasts")
+        json = await self.request_data(f"/rooftop_sites/{self._resource_id}/forecasts", ssl=not self._disable_ssl)
         f = []
         for forecast in json.get("forecasts"):
 
@@ -432,7 +449,7 @@ class SolcastRooftopSite(SolcastAPI):
         """Fetch the forecasts for this rooftop site."""
 
         json = await self.request_data(
-            f"/rooftop_sites/{self._resource_id}/estimated_actuals"
+            f"/rooftop_sites/{self._resource_id}/estimated_actuals", ssl=not self._disable_ssl
         )
 
         a = []
@@ -454,5 +471,5 @@ class SolcastRooftopSite(SolcastAPI):
         """Fetch the forecasts for this rooftop site."""
 
         return await self.post_data(
-            f"/rooftop_sites/{self._resource_id}/measurements", data
+            f"/rooftop_sites/{self._resource_id}/measurements", data, ssl=not self._disable_ssl
         )
