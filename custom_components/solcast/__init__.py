@@ -237,7 +237,7 @@ class SolcastRooftopSite(SolcastAPI):
             )
 
             remaining_api_calls = self.get_remaining_API_count()
-            delay = (next_setting - dt_util.utcnow()) / remaining_api_calls - 1
+            delay = (next_setting - dt_util.utcnow()) / (remaining_api_calls - 1)
             _LOGGER.info(f"During the day, there will be {remaining_api_calls} updates delayed by {delay} each")
 
             # Schedule updates over the day (starting on 0 to process early morning update)
