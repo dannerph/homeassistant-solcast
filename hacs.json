@@ -1,5 +1,6 @@
 {
     "name": "Solcast",
+    "render_readme": true,
     "domains": [
       "sensor"
     ],
