@@ -138,7 +138,7 @@ class SolcastAPI:
     def get_remaining_API_count(self):
         return self._api_remaining
 
-    def reset_api_limit(self):
+    def reset_api_limit(self, *args):
         self._api_remaining = self._api_limit
 
     async def post_data(self, path, data, ssl=True):
