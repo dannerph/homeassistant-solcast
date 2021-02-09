@@ -25,10 +25,10 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
 
 
 class SolcastSensor(Entity):
-    """The entity class for KEBA charging stations sensors."""
+    """The entity class for Solcast sensors."""
 
     def __init__(self, name, rooftopsite, type):
-        """Initialize the KEBA Sensor."""
+        """Initialize the Solcast Sensor."""
         self._name = name
         self._rooftopsite = rooftopsite
         self._type = type
