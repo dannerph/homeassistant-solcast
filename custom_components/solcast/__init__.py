@@ -126,14 +126,14 @@ class SolcastAPI:
             _LOGGER.error(
                 "The rooftop site missing capacity, please specify capacity or provide historic data for tuning."
             )
+            return False
         elif status == 404:
             _LOGGER.error("The rooftop site cannot be found or is not accessible.")
+            return False
         elif status == 200:
             _LOGGER.debug("get request successful")
-
-        self._api_remaining = self._api_remaining - 1
-
-        return json
+            self._api_remaining = self._api_remaining - 1
+            return json
 
     def get_remaining_API_count(self):
         return self._api_remaining
@@ -433,9 +433,12 @@ class SolcastRooftopSite(SolcastAPI):
     async def _fetch_forecasts(self) -> bool:
         """Fetch the forecasts for this rooftop site."""
 
-        json = await self.request_data(f"/rooftop_sites/{self._resource_id}/forecasts", ssl=not self._disable_ssl)
+        resp = await self.request_data(f"/rooftop_sites/{self._resource_id}/forecasts", ssl=not self._disable_ssl)
+        if resp is False:
+            return False
+
         f = []
-        for forecast in json.get("forecasts"):
+        for forecast in resp.get("forecasts"):
 
             # Convert period_end and period. All other fields should already be the correct type
             forecast["period_end"] = parse_datetime(forecast["period_end"])
@@ -448,12 +451,14 @@ class SolcastRooftopSite(SolcastAPI):
     async def _fetch_estimated_actuals(self) -> bool:
         """Fetch the forecasts for this rooftop site."""
 
-        json = await self.request_data(
+        resp = await self.request_data(
             f"/rooftop_sites/{self._resource_id}/estimated_actuals", ssl=not self._disable_ssl
         )
+        if resp is False:
+            return False
 
         a = []
-        for estimated_actual in json.get("estimated_actuals"):
+        for estimated_actual in resp.get("estimated_actuals"):
 
             # Convert period_end and period. All other fields should already be the correct type
             estimated_actual["period_end"] = parse_datetime(
