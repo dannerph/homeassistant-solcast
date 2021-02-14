@@ -36,6 +36,7 @@ CONF_RESOURCE_ID = "resource_id"
 CONF_API_LIMIT = "api_limit"
 CONF_SSL_DISABLE = "disable_ssl_check"
 CONF_AUTO_FORCAST = "disable_automatic_forecast_fetching"
+CONF_AUTO_HISTORY = "disable_automatic_history_fetching"
 
 CONFIG_SCHEMA = vol.Schema(
     {
@@ -44,6 +45,7 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Required(CONF_API_KEY): cv.string,
                 vol.Required(CONF_RESOURCE_ID): cv.string,
                 vol.Optional(CONF_AUTO_FORCAST, default=False): cv.boolean,
+                vol.Optional(CONF_AUTO_HISTORY, default=False): cv.boolean,
                 vol.Optional(CONF_API_LIMIT, default=10): cv.positive_int,
                 vol.Optional(CONF_SSL_DISABLE, default=False): cv.boolean,
             }
@@ -67,8 +69,9 @@ async def async_setup(hass, config):
     api_limit = config[DOMAIN][CONF_API_LIMIT]
     disable_ssl = config[DOMAIN][CONF_SSL_DISABLE]
     disable_auto_forecast_fetching = config[DOMAIN][CONF_AUTO_FORCAST]
+    disable_auto_history_fetching = config[DOMAIN][CONF_AUTO_HISTORY]
 
-    rooftop_site = SolcastRooftopSite(hass, api_key, resource_id, api_limit, disable_ssl, disable_auto_forecast_fetching)
+    rooftop_site = SolcastRooftopSite(hass, api_key, resource_id, api_limit, disable_ssl, disable_auto_forecast_fetching, disable_auto_history_fetching)
     hass.data[DOMAIN] = rooftop_site
 
     # Load sensors
@@ -185,7 +188,7 @@ class SolcastRooftopSite(SolcastAPI):
     _forecasts = []
     _estimated_actuals = []
 
-    def __init__(self, hass, api_key, resource_id, api_limit, disable_ssl, disable_auto_forecast_fetching):
+    def __init__(self, hass, api_key, resource_id, api_limit, disable_ssl, disable_auto_forecast_fetching, disable_auto_history_fetching):
         """Initialize solcast rooftop site."""
 
         super().__init__(api_key, api_limit)
@@ -193,6 +196,7 @@ class SolcastRooftopSite(SolcastAPI):
         self._resource_id = resource_id
         self._disable_ssl = disable_ssl
         self._disable_auto_forecast_fetching = disable_auto_forecast_fetching
+        self._disable_auto_history_fetching = disable_auto_history_fetching
 
         self._last_processed_time_history = None
         self._forecast_entity_id = None
@@ -219,13 +223,6 @@ class SolcastRooftopSite(SolcastAPI):
         _LOGGER.debug("register API limit reset")
         async_track_utc_time_change(self._hass, self.reset_api_limit, hour=0, minute=0, second=0, local=True)
 
-        # Initial sensor update
-        _LOGGER.debug("register initial history update in 20 seconds")
-        async_call_later(self._hass, 20, self.update_history)
-
-        # Set periodical history update
-        _LOGGER.debug("register history update at sunrise")
-
         @callback
         def sunrise_call_action(now=None):
             """Call action with right context."""
@@ -248,9 +245,17 @@ class SolcastRooftopSite(SolcastAPI):
                 _LOGGER.info(f"History update scheduled update at {exec_time.isoformat()}")
                 async_call_later(self._hass, exec_delay, self.update_history)
 
-        # Run history update
-        # TEST: async_call_later(self._hass, 30, sunrise_call_action)
-        async_track_sunrise(self._hass, sunrise_call_action)
+        # Initial sensor update
+        if not self._disable_auto_history_fetching:
+            _LOGGER.debug("register initial history update in 20 seconds")
+            async_call_later(self._hass, 20, self.update_history)
+
+            # Set periodical history update
+            _LOGGER.debug("register history update at sunrise")
+
+            # Run history update
+            # TEST: async_call_later(self._hass, 30, sunrise_call_action)
+            async_track_sunrise(self._hass, sunrise_call_action)
 
         # Set daily forecast update
         if not self._disable_auto_forecast_fetching:

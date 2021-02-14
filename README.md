@@ -14,6 +14,7 @@ solcast:
   api_limit: 10
   disable_ssl_check: False
   disable_automatic_forecast_fetching: False
+  disable_automatic_history_fetching: False
 ```
 Switch configuration variables:
 * **api_key**: Your API key from Solcast.
@@ -21,6 +22,7 @@ Switch configuration variables:
 * **api_limit** (optional): Number of API calls that should be used for the history over the day, default is 10.
 * **disable_ssl_check** (optional): Disable SSL certificate check, only  enable this if you are facing connection problems.
 * **disable_automatic_forecast_fetching** (optional): if you want to set forecasting fetching via automation.
+* **disable_automatic_history_fetching** (optional): if you want to set history fetching via automation (or you do not care about historical values at all).
 
 <hr>
 
