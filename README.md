@@ -11,7 +11,7 @@ Copy content of custom_components to your local custom_components folder and add
 solcast:
   api_key: XXXXXX
   resource_id: YYYYYY
-  api_limit: 10
+  api_limit: 20
   disable_ssl_check: False
   disable_automatic_forecast_fetching: False
   disable_automatic_history_fetching: False

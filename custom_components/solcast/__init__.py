@@ -46,7 +46,7 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Required(CONF_RESOURCE_ID): cv.string,
                 vol.Optional(CONF_AUTO_FORCAST, default=False): cv.boolean,
                 vol.Optional(CONF_AUTO_HISTORY, default=False): cv.boolean,
-                vol.Optional(CONF_API_LIMIT, default=10): cv.positive_int,
+                vol.Optional(CONF_API_LIMIT, default=20): cv.positive_int,
                 vol.Optional(CONF_SSL_DISABLE, default=False): cv.boolean,
             }
         )
