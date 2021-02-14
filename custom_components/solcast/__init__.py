@@ -100,6 +100,7 @@ class SensorType(Enum):
 
     forecast = 1
     history = 2
+    api_count = 3
 
 
 class SolcastAPI:
@@ -124,6 +125,7 @@ class SolcastAPI:
                 status = resp.status
         if status == 429:
             _LOGGER.warning("Exceeded API rate limit")
+            self._api_remaining = 0
             return False
         elif status == 400:
             _LOGGER.error(
@@ -174,6 +176,7 @@ class SolcastRooftopSite(SolcastAPI):
     _states = {
         SensorType.history: None,
         SensorType.forecast: None,
+        SensorType.api_count: 20
     }
 
     _attributes = {
@@ -183,6 +186,7 @@ class SolcastRooftopSite(SolcastAPI):
             "the day after tomorrow": None,
             "the day after the day after tomorrow": None,
         },
+        SensorType.api_count: {}
     }
 
     _forecasts = []
@@ -330,7 +334,7 @@ class SolcastRooftopSite(SolcastAPI):
 
                 # All data processed -> notify sensors for updated values
                 self._notify_listeners(SensorType.forecast)
-                _LOGGER.info("Updated forecasts")
+                _LOGGER.debug("Updated forecasts")
 
     async def update_history(self, *args):
         """Update history state."""
@@ -373,7 +377,7 @@ class SolcastRooftopSite(SolcastAPI):
 
                     # All data processed -> notify sensors for updated values
                     self._notify_listeners(SensorType.history)
-                    _LOGGER.info("Updated history")
+                    _LOGGER.debug("Updated history")
             else:
                 _LOGGER.warning(
                     "Solcast entities not yet registered, try again next time"
@@ -391,8 +395,11 @@ class SolcastRooftopSite(SolcastAPI):
         elif listener.get_type() is SensorType.history:
             self._history_entity_id = listener.entity_id
             _LOGGER.debug(f"registered history sensor {listener.entity_id}")
+        elif listener.get_type() is SensorType.api_count:
+            _LOGGER.debug(f"registered API count sensor {listener.entity_id}")
         else:
             _LOGGER.warning("Try to register unknown sensor type")
+        
         # initial data is already loaded, thus update the component
         listener.update_callback()
 
@@ -435,10 +442,16 @@ class SolcastRooftopSite(SolcastAPI):
                 e_total += energy
         return e_total
 
+    def _update_API_call_sensor(self):
+        self._states[SensorType.api_count] = self.get_remaining_API_count()
+        self._notify_listeners(SensorType.api_count)
+        _LOGGER.debug("Updated API count sensor")
+
     async def _fetch_forecasts(self) -> bool:
         """Fetch the forecasts for this rooftop site."""
 
         resp = await self.request_data(f"/rooftop_sites/{self._resource_id}/forecasts", ssl=not self._disable_ssl)
+        self._update_API_call_sensor()
         if resp is False:
             return False
 
@@ -459,6 +472,7 @@ class SolcastRooftopSite(SolcastAPI):
         resp = await self.request_data(
             f"/rooftop_sites/{self._resource_id}/estimated_actuals", ssl=not self._disable_ssl
         )
+        self._update_API_call_sensor()
         if resp is False:
             return False
 

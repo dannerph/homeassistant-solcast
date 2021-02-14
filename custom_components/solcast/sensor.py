@@ -20,6 +20,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     rooftopsite = hass.data[DOMAIN]
     sensors.append(SolcastSensor("forecast", rooftopsite, SensorType.forecast))
     sensors.append(SolcastSensor("history", rooftopsite, SensorType.history))
+    sensors.append(SolcastSensor("remaining API count", rooftopsite, SensorType.api_count))
 
     async_add_entities(sensors)
 
