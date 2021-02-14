@@ -216,6 +216,10 @@ class SolcastRooftopSite(SolcastAPI):
         """Get Solcast rooftopsite states."""
         return self._states[sensor_type]
 
+    def set_state(self, sensor_type, state):
+        """Get Solcast rooftopsite states."""
+        self._states[sensor_type] = state
+
     def get_attributes(self, sensor_type):
         """Get Solcast rooftopsite attributes."""
         return self._attributes[sensor_type]

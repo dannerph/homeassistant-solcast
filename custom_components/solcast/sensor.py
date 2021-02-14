@@ -2,7 +2,7 @@
 import logging
 
 from homeassistant.const import ENERGY_KILO_WATT_HOUR
-from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import DOMAIN, SensorType
 
@@ -25,7 +25,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     async_add_entities(sensors)
 
 
-class SolcastSensor(Entity):
+class SolcastSensor(RestoreEntity):
     """The entity class for Solcast sensors."""
 
     def __init__(self, name, rooftopsite, type):
@@ -91,6 +91,20 @@ class SolcastSensor(Entity):
 
     async def async_added_to_hass(self):
         """Add update callback after being added to hass."""
+        await super().async_added_to_hass()
+
+        # Restore old state if possible and store it in rooftopsite object
+        await super().async_added_to_hass()
+        state = await self.async_get_last_state()
+        if not state:
+            return
+        self._state = state.state
+
+        self._rooftopsite.set_state(self._type, state.state)
+        
+        _LOGGER.debug('Restored state: ' + str(state.state))
+        _LOGGER.debug('check attributes: ' + str(state.attributes))
+
         self._rooftopsite.add_update_listener(self)
 
     def get_type(self):
