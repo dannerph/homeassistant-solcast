@@ -449,7 +449,7 @@ class SolcastRooftopSite(SolcastAPI):
         return True
 
     async def _fetch_estimated_actuals(self) -> bool:
-        """Fetch the forecasts for this rooftop site."""
+        """Fetch the estimated (historical) actual values for this rooftop site."""
 
         resp = await self.request_data(
             f"/rooftop_sites/{self._resource_id}/estimated_actuals", ssl=not self._disable_ssl
@@ -473,7 +473,7 @@ class SolcastRooftopSite(SolcastAPI):
         return True
 
     async def _post_single_measurement(self, data):
-        """Fetch the forecasts for this rooftop site."""
+        """Post single measurement."""
 
         return await self.post_data(
             f"/rooftop_sites/{self._resource_id}/measurements", data, ssl=not self._disable_ssl
